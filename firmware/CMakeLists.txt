@@ -35,9 +35,9 @@ add_executable(pico_usb_sniffer_lite
         )
 
 # pull in common dependencies
-target_link_libraries(pico_usb_sniffer_lite 
-    pico_stdlib 
-    pico_multicore 
+target_link_libraries(pico_usb_sniffer_lite
+    pico_stdlib
+    pico_multicore
     hardware_pio)
 
 pico_generate_pio_header(pico_usb_sniffer_lite ${CMAKE_CURRENT_LIST_DIR}/pico_usb_sniffer_lite.pio)
@@ -56,10 +56,5 @@ example_auto_set_url(pico_usb_sniffer_lite)
 string(APPEND CMAKE_EXE_LINKER_FLAGS "-Wl,--print-memory-usage")
 
 target_compile_definitions(pico_usb_sniffer_lite PRIVATE
-    PICO_DEFAULT_UART=1
-	PICO_DEFAULT_UART_TX_PIN=4
-	PICO_DEFAULT_UART_RX_PIN=5
-    PICO_DEFAULT_UART_BAUD_RATE=921600
-    PICO_FLASH_SIZE_BYTES=16777216
-	)
 
+	)
