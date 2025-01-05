@@ -1,0 +1,5 @@
+build/*
+!build/pico_usb_sniffer_lite.elf
+!build/pico_usb_sniffer_lite.hex
+!build/pico_usb_sniffer_lite.uf2
+!build/reset_flash.uf2

@@ -1,66 +1,212 @@
-# Usb Sniffer Lite for RP2040
+# USB sniffer for RASPBERRY PI PICO RP2040
 
-This is a simple USB sniffer based on a Raspberry Pi RP2040. It supports Low Speed and
-Full Speed modes.
+This is a simple USB sniffer based on a Raspberry Pi PICO RP2040. It supports Low Speed and Full Speed modes.
 
-The firmware presents itself as a virtual COM-port (VCP), so no additional software
-is necessary and it is compatible with all operating systems.
+![](stuff/keylogsetp.jpg)
 
-Here are a couple of example capture logs for the [enumeration](doc/usb_fs_enumeration.txt)
-and a regular [data transfer](doc/usb_fs_data.txt).
+The firmware presents itself as a virtual COM-port (VCP), so no additional software is necessary and it is compatible with all operating systems.
 
-The compiled binary is available [here](bin/UsbSnifferLite.uf2). Boot RP2040 into
-the BootROM mode and copy the UF2 file to the drive.
+This is the Dreg's fork of the original project by Alex Taradov, which can be found:
+https://github.com/therealdreg/pico-usb-sniffer-lite
 
-This sniffer has no packet decoding capabilities, but there is an excellent online
-[USB Descriptor and Request Parser](https://eleccelerator.com/usbdescreqparser/)
-that is very helpful with decoding of the standard descriptors and requests.
+I created this project to ensure that all the effort I put into my okhi project (Open Keylogger Hardware Implant - USB & PS2 Keyboards) can benefit more people: https://github.com/therealdreg/okhi
 
-The compiled binary needs to have CRC value updated to be recognized by the RP2040.
-This can be done using [bin2uf2](https://github.com/ataradov/tools/tree/master/bin2uf2) tool.
+![](stuff/withcables.jpg)
+
+# Download last firmware
+
+Download the latest firmware from the releases section:
+
+https://github.com/therealdreg/pico-usb-sniffer-lite/releases/latest
+
+# Physical USB keylogger using a Raspberry Pi Pico
+
+As an example, let's see how to make a physical USB keylogger without soldering anything. You only need a RASPBERRY PI PICO and some materials.
+
+![](stuff/keyloggersetup.jpg)
+
+## Materials
+
+- USB A FEMALE to DUPONT FEMALE cable:
+
+![](stuff/usbfemaledupont.jpg)
+
+https://aliexpress.com/i/1005004492194988.html
+
+(with individual Dupont cables)
+
+If you can't find that cable, you can use this "Probe" with regular female Dupont cables instead:
+
+- Test Board Probe Holder Single row 4P 2.54mm:
+
+![](stuff/boardprobeholder.jpg)
+
+https://aliexpress.com/item/1005006358713448.html
+
+(I only had a double row one, but it works the same)
+
+- USB C male to USB A male adapter
+
+![](stuff/usbcusbmale.jpg)
+
+https://aliexpress.com/item/1005007809731446.html
+
+- Micro Usb 5pin B Type Female Connector Pcb | Type C Female Micro Usb Male - Usb:
+
+![](stuff/multiusb.jpg)
+
+https://aliexpress.com/i/1005004336370054.html
+
+(The one with USB C female, micro USB female, USB A Male, USB A Female, and a 2.54mm pin header)
+
+## Connect everything
+
+Connect the female Dupont pins to the Raspberry Pi Pico as follows:
+
+- Green cable (D-) to GPIO20
+- White cable (D+) to GPIO21
+- Black cable to a GND
+
+![](stuff/usbdupontrp.jpg)
+
+Connect to the USB board:
+- A USB A male keyboard
+- The USB C Male to USB A Adapter. Then connect the USB A Female to DUPONT FEMALE cable to this adapter
+
+![](stuff/keyloggersetup.jpg)
+
+Finally, connect everything to the PC, and you're done!
+
+WARNING: some USB Hubs can cause problems with this setup. If you have problems, try connecting ALL directly to the PC.
+
+## Inspecting USB low speed traffic
+
+Connect to serial PORT (COM PORT) with a terminal program (like Putty, Tera Term, etc.), por conf:
+- 9600 bauds
+- data 8 bits
+- parity none
+- stop bits 1
+- flow control none
+
+To view available COM ports on Windows, open Device Manager and look for the "Ports (COM & LPT)" section.
+
+Once connected, press Enter to view the help:
+
+```
+-------------------------------------------------------------------
+pico-usb-sniffer-lite v3
+https://github.com/therealdreg/pico-usb-sniffer-lite
+BSD-3-Clause Alex Taradov & David Reguera Garcia aka Dreg
+-------------------------------------------------------------------
+Trigger: GPIO18, D+: GPIO20, D-: GPIO21
+Settings:
+  e - Capture speed       : Full
+  g - Capture trigger     : Disabled
+  l - Capture limit       : Unlimited
+  t - Time display format : Relative to the SOF
+  a - Data display format : Full
+  f - Fold empty frames   : Enabled
+
+Commands:
+  h - Print this help message
+  b - Display buffer
+  s - Start capture
+  p - Stop capture
+
+Command:
+```
+
+Press 'e' to change the capture speed to Low Speed:
+
+```
+Command:  e
+Capture speed changed to Low
+```
+
+Press 'l' 5 times to increase the packet capture limit.
+```
+Command:  l
+Capture limit changed to 100 packets
+
+Command:  l
+Capture limit changed to 200 packets
+
+Command:  l
+Capture limit changed to 500 packets
+
+Command:  l
+Capture limit changed to 1000 packets
+
+Command:  l
+Capture limit changed to 2000 packets
+```
+
+Start pressing the shift key multiple times on the target USB keyboard while entering 's' in the terminal to start capturing USB traffic:
+```
+Command:  s
+capture start!
+capture end!
+```
+
+Press 'b' to view the captured traffic:
+```
+Command:  b
+
+Capture buffer:
+   ... : Folded 946 frames
+0 : LS SOF
+-22 : IN: 0x1F/1
+-64 : DATA0 (8): 02 00 00 00 00 00 00 00
+-11 : ACK
+-22 : IN: 0x1F/2
+-11 : NAK
+   ... : Folded 175 frames
+0 : LS SOF
+-22 : IN: 0x1F/1
+-65 : DATA1 (8): 00 00 00 00 00 00 00 00
+-11 : ACK
+-22 : IN: 0x1F/2
+-11 : NAK
+   ... : Folded 159 frames
+0 : LS SOF
+-22 : IN: 0x1F/1
+-64 : DATA0 (8): 02 00 00 00 00 00 00 00
+-11 : ACK
+-22 : IN: 0x1F/2
+-11 : NAK
+   ... : Folded 47 frames
+0 : LS SOF
+-22 : IN: 0x1F/1
+-11 : NAK
+
+Total: error: 0, bus reset: 0, LS packet: 2000, frame: 1331, empty frame: 1327
+```
 
 ## Hardware Connections
 
 USB D+ and D- signals can be directly connected to the MCU pins. The default
 pin assignments are shown in the following table:
 
-| RP2040 Pin | Function | USB Cable Color |
+| PICO Pin | Function | USB Cable Color |
 |:-------:|:----------------:|:-----:|
 | GND     | Ground           | Black |
-| GPIO 10 | D+               | Green |
-| GPIO 11 | D-               | White |
-| GPIO 12 | Start (internal) | N/A   |
-| GPIO 18 | Trigger          | N/A   |
-| GPIO 25 | Status LED       | N/A   |
-| GPIO 26 | Error LED        | N/A   |
-
-The easiest way to connect the signals to the Raspberry Pi Pico board is to splice
-the USB cable. It does not have to be pretty. Below is a picture of a cable that
-took less than 10 minutes to make. Feel free to make it prettier.
-
-![USB Cable](doc/cable.jpg)
-
-[Here](doc/Hardware.md) are some pictures of a cleaner version based on
-the [custom breakout board](https://github.com/ataradov/breakout-boards/tree/master/rp2040).
+| GPIO20 | D+               | Green |
+| GPIO21 | D-               | White |
+| GPIO22 | Start (internal) | N/A   |
+| GPIO18 | Trigger          | N/A   |
 
 Trigger input is internally pulled up and the active level is low. When trigger is
 enabled in the settings, the capture would pause until the trigger pin is pulled low.
 Given the limited size of the capture buffer, trigger mechanism provides a way for
 the debugged target to mark the part of interest.
 
-## Dedicated Hardware
+# Examples
 
-There is now a dedicated board. It integrates FE8.1 USB HUB, so you only need one
-connection to the host PC. This simplifies setup a lot and eliminates wiring mess
-that usually happens when working with USB sniffers.
+Here are a couple of example capture logs for the [enumeration](stuff/usb_fs_enumeration.txt) and a regular [data transfer](stuff/usb_fs_data.txt).
 
-Normally it is not advised to use the same host port for the sniffer and the target device,
-but since in this case only USB Low Speed and Full Speed modes are supported, there
-is plenty of bandwidth for both devices.
-
-Schematics and Gerber files are available in the [hardware](hardware/) directory.
-
-![USB Sniffer Lite PCB](doc/usb-sniffer-lite.jpg)
+This sniffer has no packet decoding capabilities, but there is an excellent online
+[USB Descriptor and Request Parser](https://eleccelerator.com/usbdescreqparser/)
+that is very helpful with decoding of the standard descriptors and requests.
 
 ## Settings
 
@@ -95,3 +241,29 @@ number of packets. After the capture is done, the buffer is displayed using curr
 
 The display settings may be adjusted without a new capture. Once the buffer is captured,
 it is stored in the memory and can be displayed again using a `b` command.
+
+# Developers
+
+Instructions for building & debugging the firmware step-by-step can be found in the okhi repository:
+
+https://github.com/therealdreg/okhi?tab=readme-ov-file#developers-setup
+
+
+# CHANGELOG
+
+## v3 2025-01-05
+
+Ported & adapted, but not strictly 100% equal to the original
+
+- Initial PICO SDK version
+- ONE FILE project
+- GPIO & Trigger info added to the output
+- PIO Code ASM
+- Some changes to make it work with PICO SDK
+- Added some comments for educational purposes
+- Stop capture command not implemented (I don't like accessing CDC-STDIO from different cores, and for now, it is blocking)
+- TIME not implemented yet
+- Added a PIO stuck detector (NO USB Traffic??)
+- clang-format
+- new DOC + DIY project
+- More things that I don't remember
