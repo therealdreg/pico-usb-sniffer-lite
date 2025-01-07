@@ -27,6 +27,9 @@ WARNING: DREG'S BULLSHIT CODE X-)
 
 // This project assumes that copy_to_ram is enabled, so ALL code is running from RAM
 
+#include <stdio.h>
+#include <string.h>
+
 #include "hardware/clocks.h"
 #include "hardware/irq.h"
 #include "hardware/pio.h"
@@ -39,12 +42,11 @@ WARNING: DREG'S BULLSHIT CODE X-)
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
 #include "pico_usb_sniffer_lite.pio.h"
-#include <stdio.h>
-#include <string.h>
+#include "tusb.h"
 
 #define BP() __asm("bkpt #1"); // breakpoint via software macro
 
-#define FVER 3
+#define FVER 5
 
 // DP and DM can be any pins, but they must be consecutive and in that order
 #define DP_INDEX 20
@@ -676,7 +678,7 @@ static bool print_packet(void)
     return true;
 }
 
-void display_buffer(void)
+static void display_buffer(void)
 {
     if (g_buffer_info.count == 0)
     {
@@ -735,7 +737,7 @@ static uint8_t crc5_usb(uint8_t *data, int size)
     return crc;
 }
 
-void set_error(bool error)
+static void set_error(bool error)
 {
     return;
 }
@@ -972,6 +974,65 @@ static void process_buffer(void)
     g_buffer_info.count = out_count;
 }
 
+static void free_all_pio_state_machines(PIO pio)
+{
+    for (int sm = 0; sm < 4; sm++)
+    {
+        if (pio_sm_is_claimed(pio, sm))
+        {
+            pio_sm_unclaim(pio, sm);
+        }
+    }
+}
+
+static void pio_destroy(void)
+{
+    free_all_pio_state_machines(pio0);
+    free_all_pio_state_machines(pio1);
+    pio_clear_instruction_memory(pio0);
+    pio_clear_instruction_memory(pio1);
+}
+
+static void change_setting(char *name, int *value, int count, const char *str[])
+{
+    (*value)++;
+
+    if (*value == count)
+    {
+        *value = 0;
+    }
+
+    printf("%s changed to %s\r\n", name, str[*value]);
+}
+
+static void print_help(void)
+{
+    printf("\r\n-------------------------------------------------------------------\r\n"
+           "pico-usb-sniffer-lite v%d - Build date: %s, %s\r\n"
+           "https://github.com/therealdreg/pico-usb-sniffer-lite\r\n"
+           "BSD-3-Clause Alex Taradov & David Reguera Garcia aka Dreg\r\n"
+           "-------------------------------------------------------------------\r\n"
+           "Trigger: GPIO%d, D+(GREEN): GPIO%d, D-(WHITE): GPIO%d, GPIO%d PIO internal\r\n"
+           "Settings:\r\n"
+           "  e - Capture speed       : %s\r\n"
+           "  g - Capture trigger     : %s\r\n"
+           "  l - Capture limit       : %s\r\n"
+           "  t - Time display format : %s\r\n"
+           "  a - Data display format : %s\r\n"
+           "  f - Fold empty frames   : %s\r\n"
+           "\r\n"
+           "Commands:\r\n"
+           "  h - Print this help message\r\n"
+           "  b - Display buffer\r\n"
+           "  s - Start capture\r\n"
+           "  p - Stop capture\r\n"
+           "\r\n",
+           FVER, __DATE__, __TIME__, TRIGGER_INDEX, DP_INDEX, DM_INDEX, START_INDEX, capture_speed_str[g_capture_speed],
+           capture_trigger_str[g_capture_trigger], capture_limit_str[g_capture_limit], display_time_str[g_display_time],
+           display_data_str[g_display_data], display_fold_str[g_display_fold]);
+}
+
+// IRQ handlers
 void pio1_irq(void)
 {
     printf("PIO1 IRQ!\r\n");
@@ -1001,25 +1062,7 @@ void pio0_irq(void)
         pio0_hw->irq = 2;
     }
 }
-
-void free_all_pio_state_machines(PIO pio)
-{
-    for (int sm = 0; sm < 4; sm++)
-    {
-        if (pio_sm_is_claimed(pio, sm))
-        {
-            pio_sm_unclaim(pio, sm);
-        }
-    }
-}
-
-void pio_destroy(void)
-{
-    free_all_pio_state_machines(pio0);
-    free_all_pio_state_machines(pio1);
-    pio_clear_instruction_memory(pio0);
-    pio_clear_instruction_memory(pio1);
-}
+// END IRQ handlers
 
 void core1_main()
 {
@@ -1155,6 +1198,7 @@ void core1_main()
 
             watchdog_enable(4000, true);
 
+            uint32_t base_time = 0;
             while (1)
             {
                 watchdog_update();
@@ -1163,7 +1207,8 @@ void core1_main()
                 if (v & 0x80000000)
                 {
                     g_buffer[packet + 0] = 0xffffffff - v;
-                    g_buffer[packet + 1] = 0; // TIMER
+                    base_time = base_time ? base_time : timer_hw->timelr;
+                    g_buffer[packet + 1] = timer_hw->timelr - base_time;
                     g_buffer_info.count++;
                     packet = index;
                     index += 2;
@@ -1196,47 +1241,18 @@ void core1_main()
     }
 }
 
-static void change_setting(char *name, int *value, int count, const char *str[])
-{
-    (*value)++;
-
-    if (*value == count)
-    {
-        *value = 0;
-    }
-
-    printf("%s changed to %s\r\n", name, str[*value]);
-}
-
-void print_help(void)
-{
-    printf("\r\n-------------------------------------------------------------------\r\n"
-           "pico-usb-sniffer-lite v%d\r\n"
-           "https://github.com/therealdreg/pico-usb-sniffer-lite\r\n"
-           "BSD-3-Clause Alex Taradov & David Reguera Garcia aka Dreg\r\n"
-           "-------------------------------------------------------------------\r\n"
-           "Trigger: GPIO%d, D+(GREEN): GPIO%d, D-(WHITE): GPIO%d, GPIO%d PIO internal\r\n"
-           "Settings:\r\n"
-           "  e - Capture speed       : %s\r\n"
-           "  g - Capture trigger     : %s\r\n"
-           "  l - Capture limit       : %s\r\n"
-           "  t - Time display format : %s\r\n"
-           "  a - Data display format : %s\r\n"
-           "  f - Fold empty frames   : %s\r\n"
-           "\r\n"
-           "Commands:\r\n"
-           "  h - Print this help message\r\n"
-           "  b - Display buffer\r\n"
-           "  s - Start capture\r\n"
-           "  p - Stop capture\r\n"
-           "\r\n",
-           FVER, TRIGGER_INDEX, DP_INDEX, DM_INDEX, START_INDEX, capture_speed_str[g_capture_speed],
-           capture_trigger_str[g_capture_trigger], capture_limit_str[g_capture_limit], display_time_str[g_display_time],
-           display_data_str[g_display_data], display_fold_str[g_display_fold]);
-}
-
 int main(void)
 {
+    // after reset from programmer (SWD), the USB is not working, so, I need to disconnect and connect
+    // again to make it work
+    sleep_ms(3000);
+    tud_disconnect();
+    sleep_ms(3000);
+    tud_connect();
+
+    stdio_init_all();
+    sleep_ms(3000);
+
     /*
       Setting the RP clock to 120 MHz is crucial for USB sniffing.
       This clock speed ensures that the PIO (Programmable Input/Output)
@@ -1247,18 +1263,12 @@ int main(void)
     */
     bool success = set_sys_clock_khz(120000, true);
 
-    sleep_ms(100);
-
-    stdio_init_all();
-
-    sleep_ms(2000);
-
     printf("\r\npico-usb-sniffer-lite started!\r\n");
 
     if (watchdog_caused_reboot())
     {
-        printf("\r\nWatchdog caused reset! no USB traffic??, waiting 8 secs to start...\r\n");
-        sleep_ms(8000);
+        printf("\r\nWatchdog caused reset! no USB traffic??, waiting 6 secs to start...\r\n");
+        sleep_ms(6000);
     }
 
     if (success)
@@ -1298,6 +1308,7 @@ int main(void)
         }
         else if (cmd == 'p')
         {
+            printf("capture stop is not implemented yet!\r\n");
         } // Do nothing here, stop only works if the capture is running
         else if (cmd == 'b')
         {
