@@ -36,5 +36,10 @@
       "markdown": true,
       "javascript": true,
       "python": true
+  },
+  "files.associations": {
+    "*.embeddedhtml": "html",
+    "*.php": "html",
+    "stdlib.h": "c"
   }
 }

@@ -15,6 +15,12 @@ I created this project to ensure that all the effort I put into my okhi project 
 
 ![](stuff/withcables.jpg)
 
+# USB Cable color
+
+- Green: D+
+- White: D-
+- Black: GND
+
 # Download last firmware
 
 Download the latest firmware from the releases section:
@@ -120,20 +126,22 @@ Connect to serial PORT (COM PORT) with a terminal program (like Putty, Tera Term
 
 To view available COM ports on Windows, open Device Manager and look for the "Ports (COM & LPT)" section.
 
-Once connected, press Enter to view the help:
+**The COM port becomes available approximately 4 seconds after connection** (the firmware includes a delay before it starts).
 
 ```
 -------------------------------------------------------------------
-pico-usb-sniffer-lite v3
+pico-usb-sniffer-lite v7 - Build date: Aug 19 2025, 21:02:43
 https://github.com/therealdreg/pico-usb-sniffer-lite
+https://github.com/therealdreg/okhi
 BSD-3-Clause Alex Taradov & David Reguera Garcia aka Dreg
 -------------------------------------------------------------------
-Trigger: GPIO18, D+: GPIO20, D-: GPIO21
+Trigger: GPIO18, D+(GREEN): GPIO20, D-(WHITE): GPIO21, GPIO22 PIO internal
+Reserved OKHI: GPIO9, GPIO8, GPIO26
 Settings:
-  e - Capture speed       : Full
+  e - Capture speed       : Low
   g - Capture trigger     : Disabled
-  l - Capture limit       : Unlimited
-  t - Time display format : Relative to the SOF
+  l - Capture limit       : 2000 packets
+  t - Time display format : Relative to the first packet
   a - Data display format : Full
   f - Fold empty frames   : Enabled
 
@@ -144,31 +152,6 @@ Commands:
   p - Stop capture
 
 Command:
-```
-
-Press 'e' to change the capture speed to Low Speed:
-
-```
-Command:  e
-Capture speed changed to Low
-```
-
-Press 'l' 5 times to increase the packet capture limit.
-```
-Command:  l
-Capture limit changed to 100 packets
-
-Command:  l
-Capture limit changed to 200 packets
-
-Command:  l
-Capture limit changed to 500 packets
-
-Command:  l
-Capture limit changed to 1000 packets
-
-Command:  l
-Capture limit changed to 2000 packets
 ```
 
 Start pressing the shift key multiple times on the target USB keyboard while entering 's' in the terminal to start capturing USB traffic:
@@ -217,13 +200,17 @@ Total: error: 0, bus reset: 0, LS packet: 2000, frame: 1331, empty frame: 1327
 USB D+ and D- signals can be directly connected to the MCU pins. The default
 pin assignments are shown in the following table:
 
-| PICO Pin | Function | USB Cable Color |
-|:-------:|:----------------:|:-----:|
-| GND     | Ground           | Black |
-| GPIO20 | D+               | Green |
-| GPIO21 | D-               | White |
-| GPIO22 | Start (internal) | N/A   |
-| GPIO18 | Trigger          | N/A   |
+| PICO PIN | GPIO    | Function | USB Cable Color |
+|:--------:|:-------:|:----------------:|:-----:|
+| GND      | GND     | Ground           | Black |
+| 26       | GPIO20  | D+               | Green |
+| 27       | GPIO21  | D-               | White |
+| 29       | GPIO22  | Start (internal) | N/A   |
+| 24       | GPIO18  | Trigger          | N/A   |
+| 11       | GPIO8   | okhi (internal)  | N/A   |
+| 12       | GPIO9   | okhi (internal)  | N/A   |
+| 31       | GPIO26  | okhi led         | N/A   |
+
 
 Trigger input is internally pulled up and the active level is low. When trigger is
 enabled in the settings, the capture would pause until the trigger pin is pulled low.
@@ -300,6 +287,14 @@ https://github.com/therealdreg/okhi?tab=readme-ov-file#developers-setup
 
 
 # CHANGELOG
+
+## v7 2025-08-19
+
+- okhi support: led, usb switch, button press...
+- better DOC
+- default settings: low speed, specific limit, time rel to first packet...
+- better UI/UX experience
+- minor & cosmetic changes
 
 ## v5 2025-01-05
 

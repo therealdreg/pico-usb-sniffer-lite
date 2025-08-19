@@ -31,22 +31,34 @@ WARNING: DREG'S BULLSHIT CODE X-)
 #include <string.h>
 
 #include "hardware/clocks.h"
+#include "hardware/flash.h"
 #include "hardware/irq.h"
 #include "hardware/pio.h"
 #include "hardware/pll.h"
+#include "hardware/regs/io_qspi.h"
 #include "hardware/structs/clocks.h"
+#include "hardware/structs/ioqspi.h"
 #include "hardware/structs/pll.h"
+#include "hardware/structs/sio.h"
+#include "hardware/sync.h"
 #include "hardware/timer.h"
+#include "hardware/uart.h"
 #include "hardware/watchdog.h"
 #include "pico/bootrom.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
 #include "pico_usb_sniffer_lite.pio.h"
 #include "tusb.h"
+#include <stdio.h>
+#include <string.h>
 
 #define BP() __asm("bkpt #1"); // breakpoint via software macro
 
-#define FVER 5
+#define RP_LED_GPIO 26 // From PCB v5
+#define USSEL_PIN 8
+#define USOE_PIN 9
+
+#define FVER 7
 
 // DP and DM can be any pins, but they must be consecutive and in that order
 #define DP_INDEX 20
@@ -181,10 +193,10 @@ static volatile buffer_info_t g_buffer_info;
 
 extern char __flash_binary_end;
 
-static volatile int g_capture_speed = CaptureSpeed_Full;
+static volatile int g_capture_speed = CaptureSpeed_Low;
 static volatile int g_capture_trigger = CaptureTrigger_Disabled;
-static volatile int g_capture_limit = CaptureLimit_Unlimited;
-static volatile int g_display_time = DisplayTime_SOF;
+static volatile int g_capture_limit = CaptureLimit_2000;
+static volatile int g_display_time = DisplayTime_First;
 static volatile int g_display_data = DisplayData_Full;
 static volatile int g_display_fold = DisplayFold_Enabled;
 
@@ -274,6 +286,21 @@ static const char *display_fold_str[DisplayFoldCount] = {
     [DisplayFold_Enabled] = "Enabled",
     [DisplayFold_Disabled] = "Disabled",
 };
+
+static void blink_led(int n)
+{
+    gpio_init(RP_LED_GPIO);
+    gpio_set_dir(RP_LED_GPIO, GPIO_OUT);
+    sleep_ms(200);
+    for (int i = 0; i < n; i++)
+    {
+        gpio_put(RP_LED_GPIO, 1);
+        sleep_ms(200);
+        gpio_put(RP_LED_GPIO, 0);
+        sleep_ms(200);
+    }
+    gpio_set_dir(RP_LED_GPIO, GPIO_IN);
+}
 
 static bool wait_for_trigger(void)
 {
@@ -1010,9 +1037,11 @@ static void print_help(void)
     printf("\r\n-------------------------------------------------------------------\r\n"
            "pico-usb-sniffer-lite v%d - Build date: %s, %s\r\n"
            "https://github.com/therealdreg/pico-usb-sniffer-lite\r\n"
+           "https://github.com/therealdreg/okhi\r\n"
            "BSD-3-Clause Alex Taradov & David Reguera Garcia aka Dreg\r\n"
            "-------------------------------------------------------------------\r\n"
            "Trigger: GPIO%d, D+(GREEN): GPIO%d, D-(WHITE): GPIO%d, GPIO%d PIO internal\r\n"
+           "Reserved OKHI: GPIO%d, GPIO%d, GPIO%d\r\n"
            "Settings:\r\n"
            "  e - Capture speed       : %s\r\n"
            "  g - Capture trigger     : %s\r\n"
@@ -1027,9 +1056,10 @@ static void print_help(void)
            "  s - Start capture\r\n"
            "  p - Stop capture\r\n"
            "\r\n",
-           FVER, __DATE__, __TIME__, TRIGGER_INDEX, DP_INDEX, DM_INDEX, START_INDEX, capture_speed_str[g_capture_speed],
-           capture_trigger_str[g_capture_trigger], capture_limit_str[g_capture_limit], display_time_str[g_display_time],
-           display_data_str[g_display_data], display_fold_str[g_display_fold]);
+           FVER, __DATE__, __TIME__, TRIGGER_INDEX, DP_INDEX, DM_INDEX, START_INDEX, USOE_PIN, USSEL_PIN, RP_LED_GPIO,
+           capture_speed_str[g_capture_speed], capture_trigger_str[g_capture_trigger],
+           capture_limit_str[g_capture_limit], display_time_str[g_display_time], display_data_str[g_display_data],
+           display_fold_str[g_display_fold]);
 }
 
 // IRQ handlers
@@ -1241,8 +1271,74 @@ void core1_main()
     }
 }
 
+static bool bootsel_pressed_safely(void)
+{
+    const uint CS_INDEX = 1;
+    uint32_t flags = save_and_disable_interrupts();
+
+    hw_write_masked(&ioqspi_hw->io[CS_INDEX].ctrl, GPIO_OVERRIDE_LOW << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,
+                    IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
+
+    for (volatile int i = 0; i < 1000; ++i)
+    {
+        tight_loop_contents();
+    }
+
+    bool pressed = !(sio_hw->gpio_hi_in & (1u << CS_INDEX));
+
+    hw_write_masked(&ioqspi_hw->io[CS_INDEX].ctrl, GPIO_OVERRIDE_NORMAL << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,
+                    IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
+
+    restore_interrupts(flags);
+
+    return pressed;
+}
+
+static void boot_press(void)
+{
+    int x = 0;
+    for (int i = 0; i < 500; i++)
+    {
+        if (bootsel_pressed_safely())
+        {
+            x++;
+        }
+    }
+
+    if (x > 90)
+    {
+        /*
+        printf("Bootsel pressed!\r\n");
+        blink_led(5);
+        */
+        reset_usb_boot(0, 0);
+    }
+}
+
 int main(void)
 {
+    boot_press();
+    gpio_init(USSEL_PIN);
+    gpio_set_dir(USSEL_PIN, GPIO_OUT);
+    gpio_put(USSEL_PIN, false);
+    sleep_ms(500);
+
+    gpio_init(USSEL_PIN);
+    gpio_set_dir(USSEL_PIN, GPIO_OUT);
+    gpio_put(USSEL_PIN, false);
+    sleep_ms(500);
+
+    gpio_init(USOE_PIN);
+    gpio_set_dir(USOE_PIN, GPIO_OUT);
+    gpio_put(USOE_PIN, true);
+    sleep_ms(500);
+
+    gpio_put(USSEL_PIN, true);
+    sleep_ms(500);
+
+    gpio_put(USOE_PIN, false);
+    blink_led(3);
+
     // after reset from programmer (SWD), the USB is not working, so, I need to disconnect and connect
     // again to make it work
     sleep_ms(3000);
@@ -1263,7 +1359,9 @@ int main(void)
     */
     bool success = set_sys_clock_khz(120000, true);
 
-    printf("\r\npico-usb-sniffer-lite started!\r\n");
+    sleep_ms(1000);
+
+    printf("\r\npico-usb-sniffer-lite started\r\n");
 
     if (watchdog_caused_reboot())
     {
@@ -1295,7 +1393,7 @@ int main(void)
         char cmd = getchar();
         printf(" %c\r\n", cmd);
 
-        if (cmd == 's')
+        if (cmd == 's' || cmd == 'S')
         {
             printf("capture start!\r\n");
             multicore_fifo_push_blocking(0x69696969);
@@ -1305,40 +1403,42 @@ int main(void)
             }
             multicore_fifo_pop_blocking();
             printf("capture end!\r\n");
+            printf("\r\npress 'b' to display buffer\r\n");
         }
-        else if (cmd == 'p')
+        else if (cmd == 'p' || cmd == 'P')
         {
             printf("capture stop is not implemented yet!\r\n");
         } // Do nothing here, stop only works if the capture is running
-        else if (cmd == 'b')
+        else if (cmd == 'b' || cmd == 'B')
         {
             display_buffer();
+            printf("\r\npress 'h' to display help\r\n");
         }
-        else if (cmd == 'h' || cmd == '?')
+        else if (cmd == 'h' || cmd == 'H' || cmd == '?')
         {
             print_help();
         }
-        else if (cmd == 'e')
+        else if (cmd == 'e' || cmd == 'E')
         {
             change_setting("Capture speed", (int *)&g_capture_speed, CaptureSpeedCount, capture_speed_str);
         }
-        else if (cmd == 'g')
+        else if (cmd == 'g' || cmd == 'G')
         {
             change_setting("Capture trigger", (int *)&g_capture_trigger, CaptureTriggerCount, capture_trigger_str);
         }
-        else if (cmd == 'l')
+        else if (cmd == 'l' || cmd == 'L')
         {
             change_setting("Capture limit", (int *)&g_capture_limit, CaptureLimitCount, capture_limit_str);
         }
-        else if (cmd == 't')
+        else if (cmd == 't' || cmd == 'T')
         {
             change_setting("Time display format", (int *)&g_display_time, DisplayTimeCount, display_time_str);
         }
-        else if (cmd == 'a')
+        else if (cmd == 'a' || cmd == 'A')
         {
             change_setting("Data display format", (int *)&g_display_data, DisplayDataCount, display_data_str);
         }
-        else if (cmd == 'f')
+        else if (cmd == 'f' || cmd == 'F')
         {
             change_setting("Fold empty frames", (int *)&g_display_fold, DisplayFoldCount, display_fold_str);
         }
