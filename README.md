@@ -97,8 +97,8 @@ I assume you have a USB keyboard, Raspberry Pi Pico, dupont cable set (F-F, M-F,
 
 Connect the female Dupont pins to the Raspberry Pi Pico as follows:
 
-- Green cable (D-) to GPIO20
-- White cable (D+) to GPIO21
+- Green cable (D+) to GPIO20
+- White cable (D-) to GPIO21
 - Black cable to a GND
 
 ![](stuff/usbdupontrp.jpg)
