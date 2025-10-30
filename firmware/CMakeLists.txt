@@ -38,7 +38,8 @@ add_executable(pico_usb_sniffer_lite
 target_link_libraries(pico_usb_sniffer_lite
     pico_stdlib
     pico_multicore
-    hardware_pio)
+    hardware_pio
+    hardware_flash)
 
 pico_generate_pio_header(pico_usb_sniffer_lite ${CMAKE_CURRENT_LIST_DIR}/pico_usb_sniffer_lite.pio)
 
