@@ -97,8 +97,8 @@ I assume you have a USB keyboard, Raspberry Pi Pico, dupont cable set (F-F, M-F,
 
 Connect the female Dupont pins to the Raspberry Pi Pico as follows:
 
-- Green cable (D-) to GPIO20
-- White cable (D+) to GPIO21
+- Green cable (D+) to GPIO20
+- White cable (D-) to GPIO21
 - Black cable to a GND
 
 ![](stuff/usbdupontrp.jpg)
@@ -287,6 +287,12 @@ https://github.com/therealdreg/okhi?tab=readme-ov-file#developers-setup
 
 
 # CHANGELOG
+
+## v9 2025-30-10
+
+- Fix https://github.com/ataradov/usb-sniffer-lite/issues/24  (Thx https://github.com/Onion4070/ for testing/report/...)
+- Fix README documentation errors (GPIO20/21)
+- Add USB Traffic Watchdog disable/enable 'w' command
 
 ## v7 2025-08-19
 
