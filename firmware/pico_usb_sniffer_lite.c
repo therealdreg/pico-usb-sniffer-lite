@@ -58,7 +58,7 @@ WARNING: DREG'S BULLSHIT CODE X-)
 #define USSEL_PIN 8
 #define USOE_PIN 9
 
-#define FVER 7
+#define FVER 9
 
 // DP and DM can be any pins, but they must be consecutive and in that order
 #define DP_INDEX 20
@@ -211,6 +211,10 @@ static volatile bool g_check_delta;
 static volatile bool g_folding;
 static volatile int g_fold_count;
 static volatile int g_display_ptr;
+
+static volatile bool wden = false;
+
+__attribute__((section(".uninitialized_data"))) uint32_t xflag;
 
 static const uint16_t crc16_usb_tab[256] = {
     0x0000, 0xc0c1, 0xc181, 0x0140, 0xc301, 0x03c0, 0x0280, 0xc241, 0xc601, 0x06c0, 0x0780, 0xc741, 0x0500, 0xc5c1,
@@ -995,6 +999,10 @@ static void process_buffer(void)
         else
         {
             process_packet(size - 1);
+            if (size % 31 <= 1)
+            {
+                g_rd_ptr++;
+            }
         }
     }
 
@@ -1043,12 +1051,13 @@ static void print_help(void)
            "Trigger: GPIO%d, D+(GREEN): GPIO%d, D-(WHITE): GPIO%d, GPIO%d PIO internal\r\n"
            "Reserved OKHI: GPIO%d, GPIO%d, GPIO%d\r\n"
            "Settings:\r\n"
-           "  e - Capture speed       : %s\r\n"
-           "  g - Capture trigger     : %s\r\n"
-           "  l - Capture limit       : %s\r\n"
-           "  t - Time display format : %s\r\n"
-           "  a - Data display format : %s\r\n"
-           "  f - Fold empty frames   : %s\r\n"
+           "  e - Capture speed        : %s\r\n"
+           "  g - Capture trigger      : %s\r\n"
+           "  l - Capture limit        : %s\r\n"
+           "  t - Time display format  : %s\r\n"
+           "  a - Data display format  : %s\r\n"
+           "  f - Fold empty frames    : %s\r\n"
+           "  w - USB traffic watchdog : %s\r\n"
            "\r\n"
            "Commands:\r\n"
            "  h - Print this help message\r\n"
@@ -1059,7 +1068,7 @@ static void print_help(void)
            FVER, __DATE__, __TIME__, TRIGGER_INDEX, DP_INDEX, DM_INDEX, START_INDEX, USOE_PIN, USSEL_PIN, RP_LED_GPIO,
            capture_speed_str[g_capture_speed], capture_trigger_str[g_capture_trigger],
            capture_limit_str[g_capture_limit], display_time_str[g_display_time], display_data_str[g_display_data],
-           display_fold_str[g_display_fold]);
+           display_fold_str[g_display_fold], wden ? "Enabled" : "Disabled");
 }
 
 // IRQ handlers
@@ -1224,14 +1233,19 @@ void core1_main()
             pio_sm_clear_fifos(pio0, pio0_sm);
             pio_sm_set_enabled(pio1, pio1_sm, true);
 
-            // use watchdog to detect if the capture is stuck (NO USB TRAFFIC???)
-
-            watchdog_enable(4000, true);
+            if (wden)
+            {
+                // use watchdog to detect if the capture is stuck (NO USB TRAFFIC???)
+                watchdog_enable(4000, true);
+            }
 
             uint32_t base_time = 0;
             while (1)
             {
-                watchdog_update();
+                if (wden)
+                {
+                    watchdog_update();
+                }
                 uint32_t v = pio_sm_get_blocking(pio0, pio0_sm);
 
                 if (v & 0x80000000)
@@ -1261,9 +1275,12 @@ void core1_main()
                 }
             }
 
-            // disable watchdog (NOT PUBLIC API to disable watchdog), So, I'm using the register directly:
-            volatile uint32_t *watchdog_ctrl = (volatile uint32_t *)0x40058000;
-            *watchdog_ctrl &= ~(1 << 30);
+            if (wden)
+            {
+                // disable watchdog (NOT PUBLIC API to disable watchdog), So, I'm using the register directly:
+                volatile uint32_t *watchdog_ctrl = (volatile uint32_t *)0x40058000;
+                *watchdog_ctrl &= ~(1 << 30);
+            }
 
             process_buffer();
             multicore_fifo_push_blocking(0x69696969);
@@ -1318,6 +1335,16 @@ static void boot_press(void)
 int main(void)
 {
     boot_press();
+
+    if (xflag == 0x69699696)
+    {
+        wden = true;
+    }
+    else
+    {
+        wden = false;
+    }
+
     gpio_init(USSEL_PIN);
     gpio_set_dir(USSEL_PIN, GPIO_OUT);
     gpio_put(USSEL_PIN, false);
@@ -1441,6 +1468,12 @@ int main(void)
         else if (cmd == 'f' || cmd == 'F')
         {
             change_setting("Fold empty frames", (int *)&g_display_fold, DisplayFoldCount, display_fold_str);
+        }
+        else if (cmd == 'w' || cmd == 'W')
+        {
+            xflag = xflag == 0x69699696 ? 0 : 0x69699696;
+            wden = xflag == 0x69699696 ? true : false;
+            printf("Watchdog %s\r\n", wden ? "enabled" : "disabled");
         }
         else
         {
